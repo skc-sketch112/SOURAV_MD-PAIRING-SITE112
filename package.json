@@ -1,7 +1,7 @@
 {
   "name": "whatsapp-pairing",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "pairing-test.js",
   "scripts": {
     "start": "node paring-test.js"
   },
