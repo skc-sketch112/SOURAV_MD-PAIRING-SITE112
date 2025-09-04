@@ -1,26 +1,28 @@
 {
   "name": "whatsapp-pairing",
   "version": "1.0.0",
-  "description": "WhatsApp userbot pairing service using Baileys",
+  "description": "WhatsApp pairing service using Baileys and Express",
   "main": "pairing-test.js",
   "scripts": {
     "start": "node pairing-test.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "body-parser": "^1.20.2",
-    "express": "^4.18.2",
-    "socket.io": "^4.7.5"
+    "@whiskeysockets/baileys": "6.7.8",
+    "body-parser": "1.20.2",
+    "express": "4.18.2",
+    "socket.io": "4.7.5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.x"
   },
   "keywords": [
     "whatsapp",
     "baileys",
     "pairing",
-    "userbot"
+    "bot",
+    "express",
+    "socket.io"
   ],
-  "author": "your-name",
+  "author": "",
   "license": "MIT"
 }
