@@ -1,76 +1,70 @@
-import express from "express";
-import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys";
-import path from "path";
+const express = require("express");
+const bodyParser = require("body-parser");
+const fs = require("fs");
+const path = require("path");
+
+// ✅ Correct way to import in CommonJS for Baileys 6.7.8
+const makeWASocket = require("@whiskeysockets/baileys").default;
+const { useMultiFileAuthState } = require("@whiskeysockets/baileys");
 
 const app = express();
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(bodyParser.json());
 
-let sock;
+const PORT = process.env.PORT || 3000;
 
-async function startSock() {
-  const { state, saveCreds } = await useMultiFileAuthState("sessions");
+// Ensure sessions folder exists
+const sessionsDir = path.join(__dirname, "sessions");
+if (!fs.existsSync(sessionsDir)) {
+  fs.mkdirSync(sessionsDir);
+}
 
-  sock = makeWASocket({
+async function startSock(number) {
+  const sessionPath = path.join(sessionsDir, number);
+  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+
+  const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
-    browser: ["Render-Pairing", "Chrome", "1.0"],
+    printQRInTerminal: false, // don't show QR, we only use pairing codes
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
-    console.log("Connection update:", connection, lastDisconnect);
-  });
-
-  return sock;
+  if (!sock.authState.creds.registered) {
+    const code = await sock.requestPairingCode(number);
+    return code;
+  } else {
+    return "✅ Already paired!";
+  }
 }
 
-app.get("/", (req, res) => {
-  res.send(`
-    <html>
-      <head><title>WhatsApp Pairing Service</title></head>
-      <body style="font-family: sans-serif; text-align:center; margin-top:50px;">
-        <h1>WhatsApp Pairing Service</h1>
-        <form method="POST" action="/pair">
-          <input type="text" name="number" placeholder="+919876543210" required style="padding:8px; width:250px;">
-          <button type="submit" style="padding:8px 12px;">Get Pairing Code</button>
-        </form>
-      </body>
-    </html>
-  `);
-});
-
+// API endpoint: request pairing code
 app.post("/pair", async (req, res) => {
   try {
-    if (!sock) sock = await startSock();
-
-    const number = req.body.number;
-    if (!number) return res.status(400).send("❌ Phone number required");
-
-    if (typeof sock.requestPairingCode !== "function") {
-      return res.status(500).send("❌ requestPairingCode() not supported in this Baileys version.");
+    const { number } = req.body;
+    if (!number) {
+      return res.status(400).json({ success: false, error: "❌ Phone number required" });
     }
 
-    const code = await sock.requestPairingCode(number);
-    console.log("✅ Pairing code:", code);
-
-    res.send(`
-      <html>
-        <head><title>Pairing Code</title></head>
-        <body style="font-family: sans-serif; text-align:center; margin-top:50px;">
-          <h2>Your Pairing Code:</h2>
-          <p style="font-size:24px; font-weight:bold;">${code}</p>
-          <a href="/">Back</a>
-        </body>
-      </html>
-    `);
+    const code = await startSock(number);
+    res.json({ success: true, code });
   } catch (err) {
-    console.error("❌ Error generating code:", err);
-    res.status(500).send("Error generating code: " + err.message);
+    console.error("Error generating code:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🚀 Server running on port", PORT));
+// API endpoint: download session
+app.get("/get-session/:number", (req, res) => {
+  const { number } = req.params;
+  const credsFile = path.join(sessionsDir, number, "creds.json");
+
+  if (!fs.existsSync(credsFile)) {
+    return res.status(404).json({ success: false, error: "Session not found" });
+  }
+
+  res.download(credsFile, `${number}-session.json`);
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
