@@ -1,48 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <title>WhatsApp Pairing</title>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <h2>🔑 WhatsApp Pairing System</h2>
-  <input type="text" id="number" placeholder="91xxxxxxxxxx" />
+  <h2>WhatsApp Pairing Service</h2>
+  <input id="number" placeholder="Enter WhatsApp number (e.g. 91XXXXXXXXXX)">
   <button onclick="pair()">Get Pairing Code</button>
-  <p id="result"></p>
 
-  <h3>📥 Get Session</h3>
-  <input type="text" id="sessionNumber" placeholder="Enter number again" />
-  <button onclick="getSession()">Download Session</button>
+  <div id="result"></div>
 
   <script>
     const socket = io();
 
-    // Show popup when pairing code is ready
-    socket.on("pairing", (data) => {
-      document.getElementById("result").innerText =
-        "Pairing Code for " + data.number + ": " + data.code;
-      alert("Your pairing code: " + data.code);
-    });
-
-    async function pair() {
+    function pair() {
       const number = document.getElementById("number").value;
-      const res = await fetch("/pair", {
+      fetch("/pair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ number }),
+        body: JSON.stringify({ number })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert("Your pairing code: " + data.code);
+          document.getElementById("result").innerText = "Pairing code: " + data.code;
+        } else {
+          alert("Error: " + data.error);
+        }
       });
-      const data = await res.json();
-      if (!data.success) {
-        alert("Error: " + data.error);
-      }
     }
 
-    function getSession() {
-      const num = document.getElementById("sessionNumber").value;
-      if (!num) return alert("Enter number first");
-      window.location.href = "/get-session/" + num;
-    }
+    socket.on("pairing", ({ number, code }) => {
+      alert(`Pairing code for ${number}: ${code}`);
+    });
   </script>
 </body>
 </html>
