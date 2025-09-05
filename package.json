@@ -2,9 +2,9 @@
   "name": "whatsapp-pairing",
   "version": "1.0.0",
   "description": "WhatsApp pairing service using Baileys and Express",
-  "main": "pairing-test.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node pairing-test.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.8",
