@@ -1,81 +1,77 @@
+// server.js
 const express = require("express");
-const http = require("http");
-const bodyParser = require("body-parser");
-const { Server } = require("socket.io");
-const fs = require("fs");
+const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
 const path = require("path");
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason
-} = require("@whiskeysockets/baileys");
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-app.use(bodyParser.json());
-app.use(express.static("views"));
+let sock; // keep socket globally
 
-const sessions = {}; // keep sockets alive
+// Start Baileys socket
+async function startSock() {
+  const { state, saveCreds } = await useMultiFileAuthState("sessions");
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "views/index.html"));
-});
-
-app.post("/pair", async (req, res) => {
-  const { number } = req.body;
-  if (!number) return res.status(400).json({ error: "Phone number required" });
-
-  const sessionPath = path.join(__dirname, "sessions", number);
-  if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
-
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-  const sock = makeWASocket({
+  sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false, // only pairing code
+    printQRInTerminal: true,
   });
-
-  // Keep socket alive in memory
-  sessions[number] = sock;
 
   sock.ev.on("creds.update", saveCreds);
-
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect } = update;
-    if (connection === "open") {
-      console.log(`✅ Connected to WhatsApp: ${number}`);
-    } else if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log(
-        `❌ Disconnected from ${number}, reconnect: ${shouldReconnect}`
-      );
-      if (!shouldReconnect) {
-        delete sessions[number];
-      }
-    }
+    console.log("Connection update:", connection, lastDisconnect);
   });
 
+  return sock;
+}
+
+// Serve frontend form
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>WhatsApp Pairing Service</title>
+      </head>
+      <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+        <h1>WhatsApp Pairing Service</h1>
+        <form method="POST" action="/pair">
+          <input type="text" name="number" placeholder="+919876543210" required style="padding:8px; width:250px;">
+          <button type="submit" style="padding:8px 12px;">Get Pairing Code</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
+
+// Generate pairing code
+app.post("/pair", async (req, res) => {
   try {
+    if (!sock) sock = await startSock();
+
+    const number = req.body.number;
+    if (!number) return res.status(400).send("Phone number required");
+
     const code = await sock.requestPairingCode(number);
-    io.emit("pairing", { number, code });
-    res.json({ success: true, code });
+    console.log("Pairing code:", code);
+
+    res.send(`
+      <html>
+        <head><title>Pairing Code</title></head>
+        <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+          <h2>Your Pairing Code:</h2>
+          <p style="font-size:24px; font-weight:bold;">${code}</p>
+          <a href="/">Back</a>
+        </body>
+      </html>
+    `);
   } catch (err) {
-    res.json({ success: false, error: err.message });
+    console.error("Error generating code:", err);
+    res.status(500).send("Error generating code");
   }
 });
 
-app.get("/get-session/:number", (req, res) => {
-  const { number } = req.params;
-  const credsFile = path.join(__dirname, "sessions", number, "creds.json");
-  if (!fs.existsSync(credsFile)) {
-    return res.status(404).json({ error: "Session not found" });
-  }
-  res.download(credsFile, `${number}-session.json`);
-});
-
+// Keep Render web service alive
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+app.listen(PORT, () => console.log("✅ Server started on port", PORT));
