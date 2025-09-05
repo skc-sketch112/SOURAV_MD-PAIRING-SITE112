@@ -1,127 +1,78 @@
+// server.js
 const express = require("express");
 const bodyParser = require("body-parser");
-const fs = require("fs");
-const path = require("path");
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-} = require("@whiskeysockets/baileys");
+const { makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 
-// Folder for saving sessions
-const SESSION_DIR = path.join(__dirname, "sessions");
-if (!fs.existsSync(SESSION_DIR)) {
-  fs.mkdirSync(SESSION_DIR);
-}
-
-/**
- * Create a new WhatsApp connection and generate pairing code
- */
-async function createConnection(number) {
-  const { state, saveCreds } = await useMultiFileAuthState(
-    path.join(SESSION_DIR, number)
-  );
-
-  const { version } = await fetchLatestBaileysVersion();
+async function startSock(number) {
+  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
 
   const sock = makeWASocket({
-    version,
     auth: state,
-    printQRInTerminal: false, // we will return code instead
-    browser: ["Render-Pairing", "Chrome", "1.0"],
+    printQRInTerminal: false,
   });
 
-  // Save credentials when updated
   sock.ev.on("creds.update", saveCreds);
 
-  return new Promise((resolve, reject) => {
-    // Generate pairing code
-    sock.waitForConnectionUpdate = true;
-
-    sock.ev.on("connection.update", (update) => {
-      const { connection, lastDisconnect } = update;
-
-      if (connection === "open") {
-        console.log("✅ Connected to WhatsApp:", number);
-      } else if (connection === "close") {
-        console.log("❌ Connection closed:", lastDisconnect?.error);
-      }
-    });
-
-    sock.ev.on("connection.update", async (update) => {
-      if (update.pairingCode) {
-        console.log("✅ Pairing code:", update.pairingCode);
-        resolve(update.pairingCode);
-      }
-    });
-
-    // Request pairing code from WhatsApp
-    sock
-      .requestPairingCode(number)
-      .then((code) => {
-        if (code) resolve(code);
-      })
-      .catch(reject);
-  });
+  if (number) {
+    try {
+      let code = await sock.requestPairingCode(number);
+      return code;
+    } catch (err) {
+      console.error("Error generating code:", err);
+      return null;
+    }
+  }
+  return null;
 }
 
-// ================== ROUTES ==================
-
-// Homepage
+// ---------- FRONTEND ----------
 app.get("/", (req, res) => {
   res.send(`
     <h1>🚀 WhatsApp Pairing Service</h1>
-    <p><b>POST</b> to <code>/pair</code> with JSON: <code>{ "number": "+91xxxxxxxxxx" }</code></p>
-    <p>Then enter code in WhatsApp (Linked Devices > Link a Device > Enter Code).</p>
+    <form onsubmit="event.preventDefault(); sendNumber();">
+      <input type="text" id="number" placeholder="+91xxxxxxxxxx" required>
+      <button type="submit">Get Pairing Code</button>
+    </form>
+
+    <script>
+      async function sendNumber() {
+        const number = document.getElementById("number").value;
+        const res = await fetch('/pair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number })
+        });
+        const data = await res.json();
+        if(data.pairingCode){
+          alert("✅ Your Pairing Code: " + data.pairingCode);
+        } else {
+          alert("❌ Error generating code. Please try again.");
+        }
+      }
+    </script>
   `);
 });
 
-// Request pairing code
+// ---------- API ----------
 app.post("/pair", async (req, res) => {
-  try {
-    const number = req.body.number;
-    if (!number) {
-      return res.status(400).json({ error: "Phone number is required" });
-    }
-    const code = await createConnection(number);
+  const { number } = req.body;
+  if (!number) {
+    return res.status(400).json({ error: "Number is required" });
+  }
+
+  const code = await startSock(number);
+  if (code) {
     res.json({ pairingCode: code });
-  } catch (err) {
-    console.error("Error generating code:", err);
-    res.status(500).json({ error: "Error generating code" });
+  } else {
+    res.status(500).json({ error: "Failed to generate code" });
   }
 });
 
-// Download session
-app.get("/get-session/:number", (req, res) => {
-  const number = req.params.number;
-  const dir = path.join(SESSION_DIR, number);
-
-  if (!fs.existsSync(dir)) {
-    return res.status(404).json({ error: "Session not found" });
-  }
-
-  const zipFile = path.join(SESSION_DIR, `${number}-session.zip`);
-  const archiver = require("archiver");
-  const output = fs.createWriteStream(zipFile);
-  const archive = archiver("zip");
-
-  output.on("close", () => {
-    res.download(zipFile, `${number}-session.zip`, () => {
-      fs.unlinkSync(zipFile);
-    });
-  });
-
-  archive.pipe(output);
-  archive.directory(dir, false);
-  archive.finalize();
-});
-
-// Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
