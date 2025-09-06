@@ -1,78 +1,32 @@
-// server.js
-const express = require("express");
-const bodyParser = require("body-parser");
-const { makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
+const { Telegraf } = require("telegraf");
+const { createSession } = require("./whatsapp");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-app.use(bodyParser.json());
+bot.start((ctx) =>
+  ctx.reply("👋 Welcome! Send me your phone number (e.g. +919876543210) to get your WhatsApp pairing code.")
+);
 
-async function startSock(number) {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+bot.on("text", async (ctx) => {
+  const phone = ctx.message.text.trim();
 
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-  });
-
-  sock.ev.on("creds.update", saveCreds);
-
-  if (number) {
-    try {
-      let code = await sock.requestPairingCode(number);
-      return code;
-    } catch (err) {
-      console.error("Error generating code:", err);
-      return null;
-    }
-  }
-  return null;
-}
-
-// ---------- FRONTEND ----------
-app.get("/", (req, res) => {
-  res.send(`
-    <h1>🚀 WhatsApp Pairing Service</h1>
-    <form onsubmit="event.preventDefault(); sendNumber();">
-      <input type="text" id="number" placeholder="+91xxxxxxxxxx" required>
-      <button type="submit">Get Pairing Code</button>
-    </form>
-
-    <script>
-      async function sendNumber() {
-        const number = document.getElementById("number").value;
-        const res = await fetch('/pair', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ number })
-        });
-        const data = await res.json();
-        if(data.pairingCode){
-          alert("✅ Your Pairing Code: " + data.pairingCode);
-        } else {
-          alert("❌ Error generating code. Please try again.");
-        }
-      }
-    </script>
-  `);
-});
-
-// ---------- API ----------
-app.post("/pair", async (req, res) => {
-  const { number } = req.body;
-  if (!number) {
-    return res.status(400).json({ error: "Number is required" });
+  if (!/^\+?\d+$/.test(phone)) {
+    return ctx.reply("⚠️ Please send a valid phone number with country code.");
   }
 
-  const code = await startSock(number);
-  if (code) {
-    res.json({ pairingCode: code });
-  } else {
-    res.status(500).json({ error: "Failed to generate code" });
+  ctx.reply("🔄 Generating pairing code for " + phone + "...");
+
+  try {
+    const { code } = await createSession(phone);
+    ctx.reply(
+      `📲 Your WhatsApp Pairing Code:\n\n👉 *${code}* 👈\n\nOpen WhatsApp → Linked Devices → Link with phone number → enter this code.`,
+      { parse_mode: "Markdown" }
+    );
+  } catch (err) {
+    console.error(err);
+    ctx.reply("❌ Failed to generate pairing code.");
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+bot.launch();
+console.log("🚀 Telegram bot is running...");
