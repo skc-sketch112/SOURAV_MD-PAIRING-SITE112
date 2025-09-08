@@ -11,22 +11,34 @@ bot.start((ctx) => {
 
 bot.on("text", async (ctx) => {
     const number = ctx.message.text.trim()
-    ctx.reply(`📲 Okay, generating QR code for number: ${number}...`)
+    ctx.reply(`📲 Okay, generating QR code for: ${number}...`)
 
-    const { state, saveCreds } = await useMultiFileAuthState("auth_" + number)
+    // 🔑 Always use a fixed folder for saving session
+    const { state, saveCreds } = await useMultiFileAuthState("./auth")
+
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false
     })
 
+    // ✅ Save creds when updated
     sock.ev.on("creds.update", saveCreds)
+
     sock.ev.on("connection.update", async (update) => {
-        if (update.qr) {
-            const qrImage = await qrcode.toBuffer(update.qr)
+        const { qr, connection, lastDisconnect } = update
+
+        if (qr) {
+            const qrImage = await qrcode.toBuffer(qr)
             await ctx.replyWithPhoto({ source: qrImage }, { caption: "🔑 Scan this QR with WhatsApp" })
         }
-        if (update.connection === "open") {
-            ctx.reply("✅ WhatsApp bot connected successfully!")
+
+        if (connection === "open") {
+            ctx.reply("✅ WhatsApp bot connected successfully! Session saved 🎉")
+        }
+
+        if (connection === "close") {
+            ctx.reply("⚠️ Connection closed, please restart and scan QR again.")
+            console.log("❌ Disconnected:", lastDisconnect?.error)
         }
     })
 })
