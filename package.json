@@ -1,15 +1,20 @@
 {
-  "name": "telegram-whatsapp-qr-bot",
+  "name": "sourav-md-pairing-site112",
   "version": "1.0.0",
+  "description": "Telegram mini bot for WhatsApp pairing with Baileys + MongoDB",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.8",
-    "dotenv": "^16.4.5",
+    "@whiskeysockets/baileys": "6.7.18",
     "qrcode": "^1.5.3",
     "telegraf": "^4.16.3",
-    "mongoose": "^7.6.0"
+    "mongoose": "^7.6.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
