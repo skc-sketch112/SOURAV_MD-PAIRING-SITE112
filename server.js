@@ -1,32 +1,34 @@
-const { Telegraf } = require("telegraf");
-const { createSession } = require("./whatsapp");
+const { Telegraf } = require("telegraf")
+const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
+const qrcode = require("qrcode")
+require("dotenv").config()
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN)
 
-bot.start((ctx) =>
-  ctx.reply("👋 Welcome! Send me your phone number (e.g. +919876543210) to get your WhatsApp pairing code.")
-);
+bot.start((ctx) => {
+    ctx.reply("👋 Welcome! Send me your WhatsApp number to get QR code.")
+})
 
 bot.on("text", async (ctx) => {
-  const phone = ctx.message.text.trim();
+    const number = ctx.message.text.trim()
+    ctx.reply(`📲 Okay, generating QR code for number: ${number}...`)
 
-  if (!/^\+?\d+$/.test(phone)) {
-    return ctx.reply("⚠️ Please send a valid phone number with country code.");
-  }
+    const { state, saveCreds } = await useMultiFileAuthState("auth_" + number)
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false
+    })
 
-  ctx.reply("🔄 Generating pairing code for " + phone + "...");
+    sock.ev.on("creds.update", saveCreds)
+    sock.ev.on("connection.update", async (update) => {
+        if (update.qr) {
+            const qrImage = await qrcode.toBuffer(update.qr)
+            await ctx.replyWithPhoto({ source: qrImage }, { caption: "🔑 Scan this QR with WhatsApp" })
+        }
+        if (update.connection === "open") {
+            ctx.reply("✅ WhatsApp bot connected successfully!")
+        }
+    })
+})
 
-  try {
-    const { code } = await createSession(phone);
-    ctx.reply(
-      `📲 Your WhatsApp Pairing Code:\n\n👉 *${code}* 👈\n\nOpen WhatsApp → Linked Devices → Link with phone number → enter this code.`,
-      { parse_mode: "Markdown" }
-    );
-  } catch (err) {
-    console.error(err);
-    ctx.reply("❌ Failed to generate pairing code.");
-  }
-});
-
-bot.launch();
-console.log("🚀 Telegram bot is running...");
+bot.launch()
