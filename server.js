@@ -1,10 +1,12 @@
 import { Telegraf } from "telegraf";
-import makeWASocket, { useMongoDBAuthState } from "@whiskeysockets/baileys";
+import baileys from "@whiskeysockets/baileys";
 import qrcode from "qrcode";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+const { default: makeWASocket, useMongoDBAuthState } = baileys;
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
