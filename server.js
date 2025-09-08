@@ -1,5 +1,5 @@
 const { Telegraf } = require("telegraf")
-const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys")
 const qrcode = require("qrcode")
 require("dotenv").config()
 
@@ -13,17 +13,22 @@ bot.on("text", async (ctx) => {
     const number = ctx.message.text.trim()
     ctx.reply(`📲 Okay, generating QR code for: ${number}...`)
 
-    // 🔑 Always use a fixed folder for saving session
+    // 🔑 Fixed path
     const { state, saveCreds } = await useMultiFileAuthState("./auth")
 
     const sock = makeWASocket({
         auth: state,
-        printQRInTerminal: false
+        printQRInTerminal: false,
+        browser: ["SOURAV_MD", "Chrome", "1.0"] // custom device name
     })
 
-    // ✅ Save creds when updated
-    sock.ev.on("creds.update", saveCreds)
+    // ✅ Always save when creds update
+    sock.ev.on("creds.update", async () => {
+        console.log("🔐 Saving session...")
+        await saveCreds()
+    })
 
+    // 📡 Listen for connection updates
     sock.ev.on("connection.update", async (update) => {
         const { qr, connection, lastDisconnect } = update
 
@@ -37,8 +42,14 @@ bot.on("text", async (ctx) => {
         }
 
         if (connection === "close") {
-            ctx.reply("⚠️ Connection closed, please restart and scan QR again.")
-            console.log("❌ Disconnected:", lastDisconnect?.error)
+            const reason = lastDisconnect?.error?.output?.statusCode
+            console.log("❌ Disconnected:", reason)
+
+            if (reason === DisconnectReason.loggedOut) {
+                ctx.reply("⚠️ Logged out. Please delete `auth/` and re-scan QR.")
+            } else {
+                ctx.reply("⚠️ Connection closed, trying to reconnect...")
+            }
         }
     })
 })
