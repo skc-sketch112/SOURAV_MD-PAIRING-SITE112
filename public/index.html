@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pairing Site</title>
+</head>
+<body>
+  <h2>Sourav MD Pairing Site</h2>
+  <form id="pairForm">
+    <input type="text" id="phone" placeholder="+91XXXXXXXXXX" required>
+    <button type="submit">Generate Pairing Code</button>
+  </form>
+  <pre id="code"></pre>
+
+  <script>
+    const form = document.getElementById("pairForm");
+    const codeBox = document.getElementById("code");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById("phone").value;
+      const res = await fetch("/pair", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      const data = await res.json();
+      codeBox.innerText = "Pairing Code: " + data.code;
+    });
+  </script>
+</body>
+</html>
